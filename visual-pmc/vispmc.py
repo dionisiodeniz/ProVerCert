@@ -1,22 +1,30 @@
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import networkx as nx
 from netgraph import EditableGraph
 import tkinter as tk
-from multiprocessing import Process
-from multiprocessing.connection import Client, Listener
-import threading
-import time
 import re
 import subprocess
+import json
+import alphaoptimize
+from tkinter import filedialog
+from tkinter import ttk
+
+plot_instance = None
+log = None
+g2 = None
 
 def extractGraphFromPrism(prismModel):
-  tokens = re.findall(r'\w+[\']?|\d+|[-][>]|[[][]]|[()\[\]\-+=;]', prismModel)
+  tokens = re.findall(r'\w+[\']?|d+|[-][>]|[\[][\]]|[()\[\]\-+=;:.]', prismModel)
   state = '' 
-  graph ={'vars':[],'transitions':[]}
+  graph ={'vars':[],'transitions':[],'states':[]}
   transitions = []
   vars = []
   source_state = -1
   target_state = -1
+  transitionName=''
+  prevtoken=''
+  prev1token=''
   for s in tokens:
     if state == '':
       if s == "[]" :
@@ -33,28 +41,100 @@ def extractGraphFromPrism(prismModel):
         state = 'source-state'
     elif state == 'source-state':
        source_state = int(s)
+       gstate = {'name':'','numObservations':0,'oneMinusAlpha':0,'transitions':[]}
        state = 'next-target-state'
     elif state == 'next-target-state':
-      if s == '=':
+      if s ==':':
+        if prev1token != "-":
+          transitionName = prevtoken
+        else:
+          if len(transitionName) != 0:
+            # FIXME: this is a temporary fix --- find a comprehensive solution
+            transitionName = transitionName[0]+str(int(transitionName[1])+1)
+          else:
+            transitionName =''
+      elif s == '=':
         state = 'target-state'
       elif s == ';':
+         graph['states'].append(gstate)
          state = ''
     elif state == 'target-state':
       target_state = int(s)
       transitions.append((source_state,target_state))
+      gstate['transitions'].append({'source':source_state,'target':target_state,'name':transitionName,'numObservations':0,'interval':{'left':0,'right':0}})
       state = 'next-target-state'
+    prev1token = prevtoken
+    prevtoken = s
   graph['transitions'] = transitions
   graph['vars'] = vars
+
+  for gstate in graph['states']:
+    stateName = gstate['name']
+    i=1
+    for transition in gstate['transitions']:
+      if transition['name'] != '':
+        stateName = transition['name'][0]
+        gstate['name']=stateName
+      else:
+        transition['name'] = stateName + str(i)
+      i += 1
+
   return graph
          
-def drawmodel():
-  graph = extractGraphFromPrism(txt.get('1.0',tk.END))
-  print(f"vars:{graph['vars']}")
-  conn.send(graph['transitions'])
+def getAlgebraicExpression(output):
+  tokens = re.findall(r'\w+[\']?|\d+|[-][>]|[[][]]|[()\[\]\-+=;{}]', output)
+  state = '' 
+  result =''
+  for s in tokens:
+    if state == '':
+      if s == "Result":
+        state = 'result-row'
+    elif state == 'result-row':
+      if s == '{':
+        state = 'result'
+    elif state == 'result':
+      if s != '}':
+        result += s
+      else:
+        state = ''
+  return result
+
+def getTransitionNumObservations(src,tgt,log):
+  for t in log:
+    if t["transitionSource"] == src and t["transitionTarget"] == tgt:
+      return t['name'],t["numObservations"]
+  return '',0
+
+def populateTransitionObservations(graph,log):
+  states2 = []
+  for state in graph['states']:
+    numobs = 0
+    n=''
+    for transition in state["transitions"]:
+      n, tobs = getTransitionNumObservations(transition["source"],
+                                          transition["target"],
+                                          log)
+      transition["numObservations"] = tobs
+      transition['name'] = n
+      numobs += tobs
+    state["numObservations"] = numobs
+    if numobs != 0:
+      states2.append(state)
+  return states2
+
+def normalizeAlgebraicEquation(eq):
+  # find out if two vars are next to each other
+  newstring = ""
+  for i in range(0,len(eq)-1):
+    newstring += eq[i]
+    if eq[i].isdigit() and eq[i+1].isalpha():
+      newstring += "*"
+  newstring += eq[len(eq)-1]
+  return newstring
 
 def executePrism(model,graph):
   vars = graph['vars']
-  params = ''#'-param '
+  params = ''
   sep=''
   for v in vars:
     params += sep+v+'=0.0:1.0'
@@ -62,41 +142,76 @@ def executePrism(model,graph):
   with open("prism-model.pm", "w") as file:
     file.write(model)
   with open ("prism-properties.pctl","w") as file:
-    file.write('P=? [ !(s=2 | s=5) U (s=9) ]')
+    #file.write('P=? [ !(s=3 | s=5) U (s=11) ]')
+    # file.write('P=? [ !(s=2 | s=5) U (s=9) ]')
+    file.write(formulaField.get())
 
-  print("command : prism prism-model.pm prism-properties.pctl ",params)
   result = subprocess.run(['prism','prism-model.pm', 'prism-properties.pctl','-param',params], shell=False,capture_output=True, text=True)
-  print(f"stdout: {result.stdout}")
+  algebraicExpression = getAlgebraicExpression(result.stdout)
+  eq = normalizeAlgebraicEquation(algebraicExpression)
+  min,max = alphaoptimize.optimizeAlphas(50,eq,0.2, 0.5,0.01,g2)
+  intervalField.insert(0,"["+str(min)+","+str(max)+"]")
 
 def analyzemodel():
   prismModel = txt.get('1.0',tk.END)
   graph = extractGraphFromPrism(prismModel)
   executePrism(prismModel,graph)
-  
-def editor():
-  global conn
-  global txt
-  address = ('localhost',6000)
-  conn = Client(address,authkey=b'secret')
-  root = tk.Tk()
-  root.title("Model Editor")
-  root.geometry('600x400')
-  frame = tk.Frame(root, pady=10, padx=10)
-  frame.pack(fill=tk.BOTH, expand=True)
-  txt = tk.Text(frame, wrap=tk.WORD, undo=True, padx=5, pady=5, fg='black', bg='white', font='Calibri 10')
-  txt.pack(fill=tk.BOTH, expand=True)
-  scrollbar = tk.Scrollbar(txt, command=txt.yview)
-  scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-  txt.config(yscrollcommand=scrollbar.set)
-  buttonFrame = tk.Frame(frame,pady=10)
-  buttonFrame.pack(fill=tk.X)
-  drawButton = tk.Button(buttonFrame, text="Draw",command=drawmodel)
-  drawButton.pack(side=tk.RIGHT,padx=5)
-  analyzeButton = tk.Button(buttonFrame, text="Analyze", command = analyzemodel)
-  analyzeButton.pack(side=tk.RIGHT, padx=5)
-  exitButton = tk.Button(buttonFrame, text="Exit",command=root.destroy)
-  exitButton.pack(side=tk.RIGHT,padx=5)
-  root.mainloop()
+
+def updatePlot(g):
+    global plot_instance
+    global ax
+    global fig
+    global canvas
+    ax.clear()
+    plot_instance = EditableGraph(
+            g,
+            node_size=2,
+            node_labels=True,
+            node_label_offset=0.1,
+            node_label_fontdict=dict(size=20),
+            edge_width=1,
+            arrows=True,
+            ax=ax)
+    canvas.draw()
+
+def drawmodel():
+  global graph
+  graph = extractGraphFromPrism(txt.get('1.0',tk.END))
+  updatePlot(graph['transitions'])
+
+
+def loadlog():
+  global g2
+  file_path = filedialog.askopenfilename()
+  logField.insert(0,file_path)
+  try:
+    with open(file_path, 'r') as file:
+        log  = json.load(file)
+        g2 = populateTransitionObservations(graph,log)
+  except FileNotFoundError:
+    print("Error: The file 'data.json' was not found.")
+  except json.JSONDecodeError as e:
+    print(f"Error: Failed to decode JSON from the file. Details: {e}")
+
+def zoomin():
+  factor = 0.8
+  xlim = ax.get_xlim()
+  ylim = ax.get_ylim()
+  ax.set_xlim(xlim[0] * factor, xlim[1] * factor)
+  ax.set_ylim(ylim[0] * factor, ylim[1] * factor)
+  canvas.draw()
+
+def zoomout():
+  factor = 1.2
+  xlim = ax.get_xlim()
+  ylim = ax.get_ylim()
+  ax.set_xlim(xlim[0] * factor, xlim[1] * factor)
+  ax.set_ylim(ylim[0] * factor, ylim[1] * factor)
+  canvas.draw()
+
+
+root = tk.Tk()
+root.title("Model Editor")
 
 graph = [
     (0,1),
@@ -115,35 +230,52 @@ plot_instance = EditableGraph(
     arrows=True,
     ax=ax)
 
-def updatePlot():
-    global plot_instance
-    global ax
-    address = ('localhost',6000)
-    listener = Listener(address,authkey=b'secret')
-    conn = listener.accept()
-    while True:
-        g = conn.recv()
-        ax.clear()
-        plot_instance = EditableGraph(
-            g,
-            node_size=2,
-            node_labels=True,
-            node_label_offset=0.1,
-            node_label_fontdict=dict(size=20),
-            edge_width=1,
-            arrows=True,
-            ax=ax)
-        fig.canvas.draw()
+graphframe = tk.Frame(root, pady=10,padx=10)
+graphframe.pack(side=tk.RIGHT,fill=tk.BOTH)
 
-updateThread = threading.Thread(target=updatePlot)
-updateThread.start()
-time.sleep(1)
-    
-proc = Process(target=editor)
-proc.start()
+canvas = FigureCanvasTkAgg(fig, master=graphframe)
+canvas.draw()
+canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-plt.show()
+zoomFrame = tk.Frame(graphframe, pady=5,padx=5)
+zoomFrame.pack(fill=tk.X)
 
-updateThread.join()
-proc.join()
+zoomInButton = tk.Button(zoomFrame, text="Zoom In", command=zoomin)
+zoomInButton.pack(side=tk.RIGHT,padx=10)
+zoomOutButton = tk.Button(zoomFrame, text="Zoom Out", command=zoomout)
+zoomOutButton.pack(side=tk.RIGHT,padx=10)
+
+frame = tk.Frame(root, pady=10, padx=10)
+frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+txt = tk.Text(frame, wrap=tk.WORD, undo=True, padx=5, pady=5, fg='black', bg='white', font='Calibri 10')
+txt.pack(fill=tk.BOTH, expand=True)
+scrollbar = tk.Scrollbar(txt, command=txt.yview)
+scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+txt.config(yscrollcommand=scrollbar.set)
+
+fieldsFrame = tk.Frame(frame,pady=10)
+fieldsFrame.pack(fill=tk.X)
+tk.Label(fieldsFrame, text="Formula: ").grid(row=0, column=0, padx=10,pady=5)
+tk.Label(fieldsFrame, text="Log: ").grid(row=1, column=0,padx=10,pady=5)
+tk.Label(fieldsFrame, text="Interval: ").grid(row=2,column=0, padx=10,pady=5)
+
+formulaField = tk.Entry(fieldsFrame,width=50)
+logField = tk.Entry(fieldsFrame,width=50)
+intervalField = tk.Entry(fieldsFrame,width=50)
+
+formulaField.grid(row=0, column=1,padx=10, pady=5)
+logField.grid(row=1,column=1,padx=10,pady=5)
+intervalField.grid(row=2,column=1,padx=10,pady=5)
+
+buttonFrame = tk.Frame(frame,pady=10)
+buttonFrame.pack(fill=tk.X)
+drawButton = tk.Button(buttonFrame, text="Draw",command=drawmodel)
+drawButton.pack(side=tk.RIGHT,padx=5)
+analyzeButton = tk.Button(buttonFrame, text="Analyze", command = analyzemodel)
+analyzeButton.pack(side=tk.RIGHT, padx=5)
+loadLogButton = tk.Button(buttonFrame, text="Load Log",command=loadlog)
+loadLogButton.pack(side=tk.RIGHT,padx=5)
+
+
+root.mainloop()
 

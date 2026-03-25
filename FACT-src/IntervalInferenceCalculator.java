@@ -11,9 +11,10 @@ import java.util.Random;
 
 import javax.script.ScriptException;
 
-//import matlabcontrol.MatlabConnectionException;
-//import matlabcontrol.MatlabProxy;
-//import matlabcontrol.MatlabProxyFactory;
+import matlabcontrol.MatlabConnectionException;
+import matlabcontrol.MatlabProxy;
+import matlabcontrol.MatlabProxyFactory;
+import matlabcontrol.MatlabInvocationException;
 
 public class IntervalInferenceCalculator {
 	/*This class requires programmatic access to MatLab with Yalmip libraries installed.
@@ -24,8 +25,8 @@ public class IntervalInferenceCalculator {
 	 *   The Yalmip program used to find global min/max of the requirements is based on the example:
 	 *    http://users.isy.liu.se/johanl/yalmip/pmwiki.php?n=Tutorials.GlobalOptimization    
 	 * */
-//	static public MatlabProxyFactory matLabFactory;
-//	static public MatlabProxy proxy;	
+	static public MatlabProxyFactory matLabFactory;
+	static public MatlabProxy proxy;	
 
 	static String[] fileNames= new String[]{
 		"input.txt"
@@ -108,7 +109,7 @@ public class IntervalInferenceCalculator {
                     if (twoparts[0].equalsIgnoreCase("ok")){
                         ret = new double[]{Double.parseDouble(twonumbs[0]),Double.parseDouble(twonumbs[1])};
                     }
-                    System.out.println("python: result: "+twoparts[0]+" args: "+twonumbs[0]+" and "+twonumbs[1]);
+                    //System.out.println("python: result: "+twoparts[0]+" args: "+twonumbs[0]+" and "+twonumbs[1]);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -202,10 +203,6 @@ public class IntervalInferenceCalculator {
 		return execPythonOptimization(pyProgram); //new double[]{min,max};
 	}
 
-	//------------------------------------------------------------------------------------------------------------------------
-	
-	/*
-	 *  Dio: removing the Matlab/yalmip requirements
 	
 	private static double[] yalmip(PrintStream experimentOutputFile,Experiment e)
 			throws MatlabConnectionException, MatlabInvocationException{
@@ -240,9 +237,9 @@ public class IntervalInferenceCalculator {
 
 			// Dio: Debugging yalmip
 
-			System.out.println("*** YALMIP COMMAND ***\n");
-			System.out.println(varDefinition+F+requirement+command);
-			System.out.println("*** END OF YALMIP COMMAND ***\n");
+			// System.out.println("*** YALMIP COMMAND ***\n");
+			// System.out.println(varDefinition+F+requirement+command);
+			// System.out.println("*** END OF YALMIP COMMAND ***\n");
 			// Dio: End Debugging yalmip
 			
 			Object[] returnArgumentsMin = proxy.returningEval("double(Rmin)", 1);
@@ -270,9 +267,6 @@ public class IntervalInferenceCalculator {
 		return new double[0];
 	}
 	
-	*/
-	
-	//------------------------------------------------------------------------------------------------
 	static ArrayList<Experiment> readInputFile(String filename){	
 		ArrayList<Experiment> exps = new ArrayList<Experiment>();
 		
@@ -327,12 +321,12 @@ public class IntervalInferenceCalculator {
 				}
 		}
 		try {
-//			matLabFactory = new MatlabProxyFactory();
-//			try {
-//				proxy = matLabFactory.getProxy();
-//			} catch (MatlabConnectionException e1) {				
-//				e1.printStackTrace();
-//			}
+			matLabFactory = new MatlabProxyFactory();
+			try {
+				proxy = matLabFactory.getProxy();
+			} catch (MatlabConnectionException e1) {				
+				e1.printStackTrace();
+			}
 
 			for(String filename : fileNames){
 				PrintStream experimentOutputFile = new PrintStream(new File(outputDirectory+experimentPrefix+filename));							
@@ -381,8 +375,13 @@ public class IntervalInferenceCalculator {
 							double max = Double.MIN_VALUE;
 
 
-							//double[] temp=	yalmip(experimentOutputFile,e);
-							double[] temp=	scipyOptimize(experimentOutputFile,e);
+							double[] temp=new double[2];
+							// try{
+							// 	temp=	yalmip(experimentOutputFile,e);
+							// } catch (Exception e1){
+							// 	e1.printStackTrace();
+							// }
+							temp=	scipyOptimize(experimentOutputFile,e);
 							min=temp[0];max=temp[1];						
 							// Record best combination so far
 							double width = max - min;
@@ -422,7 +421,7 @@ public class IntervalInferenceCalculator {
 
 				experimentOutputFile.close();
 			}
-//			proxy.disconnect();
+			proxy.disconnect();
 		} catch (FileNotFoundException e2) {
 			e2.printStackTrace();
 

@@ -1,0 +1,38 @@
+[
+    {
+        "name" : "y1",
+        "transitionSource": 1,
+        "transitionTarget": 2,
+        "numObservations": 2705
+    },
+    {
+        "name" : "y2",
+        "transitionSource":1,
+        "transitionTarget":4,
+        "numObservations":3174
+    },
+    {
+        "name" : "y3",
+        "transitionSource":1,
+        "transitionTarget":8,
+        "numObservations": 5
+    },
+    {
+        "name" : "x1",
+        "transitionSource":4,
+        "transitionTarget": 5,
+        "numObservations" : 2975
+    },
+    {
+        "name" : "x2",
+        "transitionSource":4,
+        "transitionTarget": 9,
+        "numObservations" : 187
+    },
+    {
+        "name" : "x3",
+        "transitionSource":4,
+        "transitionTarget": 10,
+        "numObservations" : 12
+    }
+]
