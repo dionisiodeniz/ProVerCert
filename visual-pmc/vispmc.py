@@ -209,6 +209,54 @@ def zoomout():
   ax.set_ylim(ylim[0] * factor, ylim[1] * factor)
   canvas.draw()
 
+def moveLeft():
+  box = ax.get_position() 
+
+  # Shift the subplot to the right by 0.1 (fraction of figure width)
+  box.x0 = box.x0 - 0.1
+  box.x1 = box.x1 - 0.1
+
+  # Set the new position
+  ax.set_position(box) 
+  canvas.draw()
+
+
+def moveRight():
+  box = ax.get_position() 
+
+  # Shift the subplot to the right by 0.1 (fraction of figure width)
+  box.x0 = box.x0 + 0.1
+  box.x1 = box.x1 + 0.1
+
+  # Set the new position
+  ax.set_position(box) 
+  canvas.draw()
+
+
+def moveUp():
+  box = ax.get_position() 
+
+  # Shift the subplot to the right by 0.1 (fraction of figure width)
+  box.y0 = box.y0 + 0.1
+  box.y1 = box.y1 + 0.1
+
+  # Set the new position
+  ax.set_position(box) 
+  canvas.draw()
+
+
+def moveDown():
+  box = ax.get_position() 
+
+  # Shift the subplot to the right by 0.1 (fraction of figure width)
+  box.y0 = box.y0 - 0.1
+  box.y1 = box.y1 - 0.1
+
+  # Set the new position
+  ax.set_position(box) 
+  canvas.draw()
+
+
 
 root = tk.Tk()
 root.title("Model Editor")
@@ -244,6 +292,17 @@ zoomInButton = tk.Button(zoomFrame, text="Zoom In", command=zoomin)
 zoomInButton.pack(side=tk.RIGHT,padx=10)
 zoomOutButton = tk.Button(zoomFrame, text="Zoom Out", command=zoomout)
 zoomOutButton.pack(side=tk.RIGHT,padx=10)
+
+rightButton = tk.Button(zoomFrame, text="Right", command=moveLeft)
+rightButton.pack(side=tk.RIGHT,padx=10)
+leftButton = tk.Button(zoomFrame, text="Left", command=moveRight)
+leftButton.pack(side=tk.RIGHT, padx=10)
+
+upButton = tk.Button(zoomFrame, text = "Up", command=moveUp)
+upButton.pack(side=tk.RIGHT, padx=10)
+downButton = tk.Button(zoomFrame, text="Down", command=moveDown)
+downButton.pack(side=tk.RIGHT, padx=10)
+
 
 frame = tk.Frame(root, pady=10, padx=10)
 frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
