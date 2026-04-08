@@ -17,7 +17,8 @@ g2 = None
 def extractGraphFromPrism(prismModel):
   tokens = re.findall(r'\w+[\']?|d+|[-][>]|[\[][\]]|[()\[\]\-+=;:.]', prismModel)
   state = '' 
-  graph ={'vars':[],'transitions':[],'states':[]}
+  graph ={'vars':[],'transitions':[],'states':[],'transitionLabels':{}}
+  transitionLabels={}
   transitions = []
   vars = []
   source_state = -1
@@ -62,11 +63,13 @@ def extractGraphFromPrism(prismModel):
       target_state = int(s)
       transitions.append((source_state,target_state))
       gstate['transitions'].append({'source':source_state,'target':target_state,'name':transitionName,'numObservations':0,'interval':{'left':0,'right':0}})
+      transitionLabels[(source_state,target_state)] = transitionName
       state = 'next-target-state'
     prev1token = prevtoken
     prevtoken = s
   graph['transitions'] = transitions
   graph['vars'] = vars
+  graph['transitionLabels'] = transitionLabels
 
   for gstate in graph['states']:
     stateName = gstate['name']
@@ -157,7 +160,7 @@ def analyzemodel():
   graph = extractGraphFromPrism(prismModel)
   executePrism(prismModel,graph)
 
-def updatePlot(g):
+def updatePlot(g,transitionLabels):
     global plot_instance
     global ax
     global fig
@@ -171,13 +174,14 @@ def updatePlot(g):
             node_label_fontdict=dict(size=20),
             edge_width=1,
             arrows=True,
+            edge_labels=transitionLabels,
             ax=ax)
     canvas.draw()
 
 def drawmodel():
   global graph
   graph = extractGraphFromPrism(txt.get('1.0',tk.END))
-  updatePlot(graph['transitions'])
+  updatePlot(graph['transitions'],graph['transitionLabels'])
 
 
 def loadlog():
@@ -267,11 +271,22 @@ graph = [
 
 fig, ax = plt.subplots(figsize=(10, 10))
 
+node_labels = {
+  0 : 'zero',
+  1 : 'one',
+  2 : 'two'
+}
+
+edge_labels = {
+  (0,1) : 'edge01',
+  (0,2) : 'edge02'
+}
 
 plot_instance = EditableGraph(
     graph,
     node_size=2,
-    node_labels=True,
+    node_labels=node_labels,
+    edge_labels=edge_labels,
     node_label_offset=0.1,
     node_label_fontdict=dict(size=20),
     edge_width=1,
