@@ -263,7 +263,7 @@ def moveDown():
 
 
 root = tk.Tk()
-root.title("Model Editor")
+root.title("Model Editor 0.2")
 
 graph = [
     (0,1),
