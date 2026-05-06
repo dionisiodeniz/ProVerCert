@@ -130,7 +130,11 @@ def normalizeAlgebraicEquation(eq):
   newstring = ""
   for i in range(0,len(eq)-1):
     newstring += eq[i]
-    if eq[i].isdigit() and eq[i+1].isalpha():
+    if eq[i].isdigit() and eq[i+1].isalpha(): # variable followed by variable
+      newstring += "*"
+    if eq[i].isdigit() and eq[i+1] == "(": # variable followed by parenthesis
+      newstring += "*"
+    if eq[i] == ")" and eq[i+1].isalpha(): # parenthesis followed by variable
       newstring += "*"
   newstring += eq[len(eq)-1]
   return newstring
@@ -150,9 +154,15 @@ def executePrism(model,graph):
     file.write(formulaField.get())
 
   result = subprocess.run(['prism','prism-model.pm', 'prism-properties.pctl','-param',params], shell=False,capture_output=True, text=True)
+  print(f"prism result: {result}")
   algebraicExpression = getAlgebraicExpression(result.stdout)
+  print(f"Algebraic Expression: {algebraicExpression}")
   eq = normalizeAlgebraicEquation(algebraicExpression)
-  min,max = alphaoptimize.optimizeAlphas(50,eq,0.2, 0.5,0.01,g2)
+  print(f"Normalized equation: {eq}")
+  prob = alphaoptimize.calculateProbability(eq,g2)
+  probabilityField.insert(0,str(prob))
+  alpha = float(alphaField.get())
+  min,max = alphaoptimize.optimizeAlphas(50,eq,alpha, alpha,0.01,g2) #alphaoptimize.optimizeAlphas(50,eq,0.2, 0.5,0.01,g2)
   intervalField.insert(0,"["+str(min)+","+str(max)+"]")
 
 def analyzemodel():
@@ -178,7 +188,7 @@ def updatePlot(g,transitionLabels):
             ax=ax)
     canvas.draw()
 
-def drawmodel():
+def compilemodel():
   global graph
   graph = extractGraphFromPrism(txt.get('1.0',tk.END))
   updatePlot(graph['transitions'],graph['transitionLabels'])
@@ -331,20 +341,27 @@ fieldsFrame = tk.Frame(frame,pady=10)
 fieldsFrame.pack(fill=tk.X)
 tk.Label(fieldsFrame, text="Formula: ").grid(row=0, column=0, padx=10,pady=5)
 tk.Label(fieldsFrame, text="Log: ").grid(row=1, column=0,padx=10,pady=5)
-tk.Label(fieldsFrame, text="Interval: ").grid(row=2,column=0, padx=10,pady=5)
+tk.Label(fieldsFrame, text="1-Alpha: ").grid(row=2, column=0,padx=10,pady=5)
+tk.Label(fieldsFrame, text="Interval: ").grid(row=3,column=0, padx=10,pady=5)
+tk.Label(fieldsFrame, text="Probability: ").grid(row=4, column=0,padx=10,pady=5)
 
 formulaField = tk.Entry(fieldsFrame,width=50)
 logField = tk.Entry(fieldsFrame,width=50)
+alphaField = tk.Entry(fieldsFrame, width=50)
 intervalField = tk.Entry(fieldsFrame,width=50)
+probabilityField = tk.Entry(fieldsFrame,width=50)
+alphaField = tk.Entry(fieldsFrame, width=50)
 
 formulaField.grid(row=0, column=1,padx=10, pady=5)
 logField.grid(row=1,column=1,padx=10,pady=5)
-intervalField.grid(row=2,column=1,padx=10,pady=5)
+alphaField.grid(row=2,column=1,padx=10,pady=5)
+intervalField.grid(row=3,column=1,padx=10,pady=5)
+probabilityField.grid(row=4,column=1,padx=10,pady=5)
 
 buttonFrame = tk.Frame(frame,pady=10)
 buttonFrame.pack(fill=tk.X)
-drawButton = tk.Button(buttonFrame, text="Draw",command=drawmodel)
-drawButton.pack(side=tk.RIGHT,padx=5)
+compileButton = tk.Button(buttonFrame, text="Compile",command=compilemodel)
+compileButton.pack(side=tk.RIGHT,padx=5)
 analyzeButton = tk.Button(buttonFrame, text="Analyze", command = analyzemodel)
 analyzeButton.pack(side=tk.RIGHT, padx=5)
 loadLogButton = tk.Button(buttonFrame, text="Load Log",command=loadlog)

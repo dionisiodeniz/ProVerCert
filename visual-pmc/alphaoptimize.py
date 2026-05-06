@@ -71,6 +71,29 @@ def computeInterval(confidence, parameter, observations):
 
     return left, right
 
+# calculate the probability given:
+# eq: equation 
+# states with number of observations
+def calculateProbability(eq, states):
+    transitionProbabilities={}
+    for state in states:
+        for transition in state['transitions']:
+            if transition['numObservations'] == 0 or state['numObservations'] == 0:
+                transitionProbabilities[transition['name']] = 0    
+            else:
+                transitionProbabilities[transition['name']] = transition['numObservations'] / state['numObservations']
+    probEquation = eq
+    for state in states:
+        for transition in state['transitions']:
+            if len(transition["name"]) != 0 and not transition['name'][0].isdigit():
+                probEquation = probEquation.replace(transition['name'],"transitionProbabilities['"+transition['name']+"']")
+                print(f"transitionProbability[{transition['name']}]={transitionProbabilities[transition['name']]}")
+    print(f"probEquation: {probEquation}")
+    prob = eval(probEquation)
+    print(f"probability: {prob}")
+    return prob
+
+
 # e.g. req = (-160*w1*y2*x1-160*w1*y2*x2+77*k1*z1*y1+160*y2*x1-77*z1*y1-77*z2*y1+160*w1*y2+160*y1)/160"
 # states=[{name: '', numObservations: 0, oneMinusAlpha:0,transitions:[{name:'', numObservations: 0, interval:{left:0,right:0}}]}]
 def optimize(req ,states):
@@ -101,11 +124,15 @@ def optimize(req ,states):
 
     for state in states:
         for transition in state['transitions']:
-            minPathEquation = minPathEquation.replace(transition['name'],"x["+str(varnum[transition['name']])+"]")
-            maxPathEquation = maxPathEquation.replace(transition['name'],"x["+str(varnum[transition['name']])+"]")
+            if len(transition["name"]) != 0 and not transition['name'][0].isdigit():
+                minPathEquation = minPathEquation.replace(transition['name'],"x["+str(varnum[transition['name']])+"]")
+                maxPathEquation = maxPathEquation.replace(transition['name'],"x["+str(varnum[transition['name']])+"]")
 
     minPathEquation = "lambda x: "+minPathEquation
     maxPathEquation = "lambda x: "+maxPathEquation
+
+    print(f"min lambda: {minPathEquation}")
+    print(f"max lambda: {maxPathEquation}")
 
     minres = opt.shgo(eval(minPathEquation), bounds, n=150, constraints=cons)
     maxres = opt.shgo(eval(maxPathEquation), bounds, n=150, constraints=cons)
