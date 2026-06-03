@@ -23,6 +23,7 @@ def extractGraphFromPrism(prismModel):
   vars = []
   source_state = -1
   target_state = -1
+  largestTransitionVarNumber=0
   transitionName=''
   prevtoken=''
   prev1token=''
@@ -48,10 +49,14 @@ def extractGraphFromPrism(prismModel):
       if s ==':':
         if prev1token != "-":
           transitionName = prevtoken
+          # This is limited to variable names with letters followed by numbers
+          varNumber = int(re.findall(r'\d+',transitionName)[0])
+          if varNumber > largestTransitionVarNumber:
+            largestTransitionVarNumber = varNumber
         else:
           if len(transitionName) != 0:
-            # FIXME: this is a temporary fix --- find a comprehensive solution
-            transitionName = transitionName[0]+str(int(transitionName[1])+1)
+            # This is limited to variable names with letters followed by numbers
+            transitionName = re.findall(r'[a-zA-Z]+',transitionName)[0]+str(largestTransitionVarNumber+1)
           else:
             transitionName =''
       elif s == '=':
@@ -193,6 +198,42 @@ def compilemodel():
   graph = extractGraphFromPrism(txt.get('1.0',tk.END))
   updatePlot(graph['transitions'],graph['transitionLabels'])
 
+def getUniqueTransitionTemplateFromTarget(g, target):
+  unique = None
+  for t in g:
+    if t['transitionTarget'] == target:
+      if unique != None:
+        # This is not unique return None
+        return None
+      else:
+        unique = t
+  return unique
+
+def createTemplate():
+  nexttrans = 1
+  transnum = 0
+  jsonTemplate = []
+  for transition, label in graph["transitionLabels"].items():
+    if label == "1":
+      t = getUniqueTransitionTemplateFromTarget(jsonTemplate,transition[0])
+      if t != None:
+        transnum = t['transition_number']
+      else:
+        transnum = nexttrans
+        nexttrans += 1
+    else:
+      transnum = nexttrans
+      nexttrans += 1
+    jsonTemplate.append({
+      "name": label,
+      "transition_number": transnum,
+      "transitionSource": transition[0],
+      "transitionTarget" : transition[1],
+      "numObservations" : 0
+    })
+
+  with open("obsTemplate.json", "w") as file:
+    json.dump(jsonTemplate, file, indent=4)
 
 def loadlog():
   global g2
@@ -206,6 +247,29 @@ def loadlog():
     print("Error: The file 'data.json' was not found.")
   except json.JSONDecodeError as e:
     print(f"Error: Failed to decode JSON from the file. Details: {e}")
+
+def loadmodel():
+  global modelfilename
+  file_path = filedialog.askopenfilename()
+  modelfilename = file_path
+
+  global root
+  root.title(file_path)
+  #logField.insert(0,file_path)
+  try:
+    with open(file_path, 'r') as file:
+        txt.delete("1.0", tk.END)
+        txt.insert("1.0", file.read())
+  except FileNotFoundError:
+    print(f"Error: The file {file_path} was not found.")
+
+def savemodel():
+  global modelfilename
+  if modelfilename == "" :
+    modelfilename = filedialog.asksaveasfilename()  
+  if modelfilename:
+    with open(modelfilename, "w") as file:
+      file.write(txt.get('1.0',tk.END))
 
 def zoomin():
   factor = 0.8
@@ -271,6 +335,7 @@ def moveDown():
   canvas.draw()
 
 
+modelfilename=""
 
 root = tk.Tk()
 root.title("Model Editor 0.2")
@@ -358,14 +423,22 @@ alphaField.grid(row=2,column=1,padx=10,pady=5)
 intervalField.grid(row=3,column=1,padx=10,pady=5)
 probabilityField.grid(row=4,column=1,padx=10,pady=5)
 
+
+
 buttonFrame = tk.Frame(frame,pady=10)
 buttonFrame.pack(fill=tk.X)
 compileButton = tk.Button(buttonFrame, text="Compile",command=compilemodel)
 compileButton.pack(side=tk.RIGHT,padx=5)
 analyzeButton = tk.Button(buttonFrame, text="Analyze", command = analyzemodel)
 analyzeButton.pack(side=tk.RIGHT, padx=5)
+createTemplateButton = tk.Button(buttonFrame, text="Create Log Template", command=createTemplate)
+createTemplateButton.pack(side=tk.RIGHT,padx=5)
 loadLogButton = tk.Button(buttonFrame, text="Load Log",command=loadlog)
 loadLogButton.pack(side=tk.RIGHT,padx=5)
+saveModelButton = tk.Button(buttonFrame, text="Save Model",command=savemodel)
+saveModelButton.pack(side=tk.RIGHT, padx=5)
+loadModelButton = tk.Button(buttonFrame, text="Load Model", command=loadmodel)
+loadModelButton.pack(side=tk.RIGHT, padx=5)
 
 
 root.mainloop()
