@@ -235,9 +235,50 @@ def createTemplate():
   with open("obsTemplate.json", "w") as file:
     json.dump(jsonTemplate, file, indent=4)
 
+def getObservations(tnumber,obsfile):
+    for o in obsfile:
+        if o["transition_number"] == tnumber:
+            return o["count"]
+    return 0
+
+def addTransitionObservations(templatefile, observationsfile):
+  try:
+    with open(templatefile, 'r') as file:
+      transfile  = json.load(file)
+  except FileNotFoundError:
+    print("Error: The file  trans.json' was not found.")
+    exit(1)
+  except json.JSONDecodeError as e:
+    print(f"Error: Failed to decode JSON from the trans file. Details: {e}")
+    exit(1)
+
+  try:
+    with open(observationsfile,'r') as file1:
+      obsfile = json.load(file1)
+  except FileNotFoundError:
+    print("Error: The file 'obs.json' was not found.")
+    exit(1)
+  except json.JSONDecodeError as e:
+    print(f"Error: Failed to decode JSON from the obs file. Details: {e}")
+    exit(1)
+
+  for t in transfile:
+    n = getObservations(t["transition_number"],obsfile)
+    t["numObservations"] = n
+
+  try:
+    with open(templatefile,"w") as file:
+      json.dump(transfile,file)
+  except FileNotFoundError:
+    print("error writing file")
+
+
 def loadlog():
   global g2
-  file_path = filedialog.askopenfilename()
+  datapath = filedialog.askopenfilename(title="Observations File")
+  file_path = filedialog.askopenfilename(title="Log Template File")
+  addTransitionObservations(file_path,datapath)
+  
   logField.insert(0,file_path)
   try:
     with open(file_path, 'r') as file:
