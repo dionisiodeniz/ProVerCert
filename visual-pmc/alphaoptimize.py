@@ -56,6 +56,17 @@ def calculateZscore(aQuantile):
         ret = -ret
     return ret
 
+# Wilson Score Interval:
+# Edwin B. Wilson. "Probable Inference, the Law of Succession, and Statistical Inference". 
+# Journal of the American Statistical Association. Vol 22, Num 158 pp 209-212.1927.
+def computeWilsonInterval(confidence, parameter, observations): 
+    alpha = 1 - confidence
+    zscore = calculateZscore(1.0-(alpha / 2.0))
+    #left is always zero
+    left = 0.0
+    right = zscore * zscore /(observations + zscore * zscore)
+
+    return left, right
 
 def computeInterval(confidence, parameter, observations): 
     alpha = 1 - confidence
@@ -109,6 +120,7 @@ def optimize(req ,states):
     sep = ""
     i=0
     cons = []
+    consstr = []
 
     for state in states:
         constrain = "lambda x: "
@@ -117,25 +129,44 @@ def optimize(req ,states):
             constrain += sep +"x["+str(varnum[transition['name']])+"]"
             sep = "+"
         constrain += " - 1"
+        consstr.append(constrain)
         cons.append({'type':'eq','fun':eval(constrain)}) 
 
     minPathEquation = req
     maxPathEquation = "-("+req+")"
+
+    num2name=""
 
     for state in states:
         for transition in state['transitions']:
             if len(transition["name"]) != 0 and not transition['name'][0].isdigit():
                 minPathEquation = minPathEquation.replace(transition['name'],"x["+str(varnum[transition['name']])+"]")
                 maxPathEquation = maxPathEquation.replace(transition['name'],"x["+str(varnum[transition['name']])+"]")
+                num2name += f"trans#({varnum[transition['name']]}):name({transition['name']})\n"
 
     minPathEquation = "lambda x: "+minPathEquation
     maxPathEquation = "lambda x: "+maxPathEquation
 
+    # minval = eval(minPathEquation)()
+    # maxval = eval(maxPathEquation)()
+
+
     print(f"min lambda: {minPathEquation}")
     print(f"max lambda: {maxPathEquation}")
 
+    #print(f"bound: {bounds}")
+
     minres = opt.shgo(eval(minPathEquation), bounds, n=150, constraints=cons)
     maxres = opt.shgo(eval(maxPathEquation), bounds, n=150, constraints=cons)
+
+    # if minres['fun'] == abs(maxres['fun']):
+    #     print(f"min lambda: {minPathEquation}")
+    #     print(f"max lambda: {maxPathEquation}")
+    #     print(f"bound: {bounds}")
+    #     print(f"constraints: {consstr}")
+    #     print(f"trans2name:{num2name}")
+
+
     return minres['fun'],abs(maxres['fun'])
 
 
@@ -160,7 +191,7 @@ def hillClimbing(alphas):
 #
 # The result will be new 'oneMinusAlpha in each state and each transition to maximize the confidence interval
 #      These results are in the same input data structure
-def optimizeAlphas(maxIterations, req, oneMinusBeta, upperBound,step,states):
+def optimizeAlphas(maxIterations, req, oneMinusBeta, upperBound,step,states,SmoothZeroFreq):
     lOneMinusBeta = oneMinusBeta
     bestWidth = sys.float_info.max
     bestMin=sys.float_info.max
@@ -178,23 +209,55 @@ def optimizeAlphas(maxIterations, req, oneMinusBeta, upperBound,step,states):
             for state in states:
                 for transition in state['transitions']:
                     # protect against zero observations
-                    if transition['numObservations'] == 0 or state['numObservations'] == 0:
+                    #if transition['numObservations'] == 0 or state['numObservations'] == 0:
+                    # Dio: we will try only to not calculate the interval if the state has no observations
+                    if state['numObservations'] == 0:
                         left = 0.0
                         right = 1.0
+                    # elif transition['numObservations'] == 0:
+                    #     # Use Wilson Score Interval:
+                    #     # Edwin B. Wilson. "Probable Inference, the Law of Succession, and Statistical Inference". 
+                    #     # Journal of the American Statistical Association. Vol 22, Num 158 pp 209-212.1927.
+                    #     left,right = computeWilsonInterval(state['oneMinusAlpha'],
+                    #                             transition['numObservations'] / state['numObservations'],
+                    #                             state['numObservations'])
                     else:
-                        left,right = computeInterval(state['oneMinusAlpha'],
+                        if SmoothZeroFreq:
+                            # Use Laplace Smoothing if we have any zeroFrequencyTransition
+                            # Christopher D. Manning, Prabhakar Raghavan, andHinrich Schutze
+                            # Introduction to Information Retrieval
+                            # Cambridge University Press. 2008.
+                            # Chapter 13: Text classification and Naive Bayes 
+                            # (section on Naive Bayes and multinomial models and Laplace Smoothing)
+                            left,right = computeInterval(state['oneMinusAlpha'],
+                                                (transition['numObservations']+1) / (state['numObservations'] + len(state)),
+                                                (state['numObservations']+len(state)))
+                        else:
+                            left,right = computeInterval(state['oneMinusAlpha'],
                                                 transition['numObservations'] / state['numObservations'],
                                                 state['numObservations'])
+                    if transition['name'] in req:
+                        print(f"computeInterval: transition({transition['name']}) left({left}) right({right})")
                     if left <0 :
                         left = 0
                     if right >1 :
                         right = 1
                     transition['interval']['left'] = left
                     transition['interval']['right'] = right
-            min = sys.float_info.max
-            max = sys.float_info.min 
+            min = 0.0
+            max = 1.0 
+            width = max-min
+            prevMin = min
+            prevMax = max
             min, max = optimize(req,states)
+            print(f"\t optimize: min({min}) max({max}) width({(max-min)})")
+            # if max-min == 0:
+            #     print(f"\t width zero: min:{min}, max:{max}")
+            if max == 0:
+                min = prevMin
+                max = prevMax
             width = max - min
+
             if width >= bestWidth - epsilon:
                 iterationsWithoutImprovement +=1
             else:
@@ -206,10 +269,9 @@ def optimizeAlphas(maxIterations, req, oneMinusBeta, upperBound,step,states):
 
             hillClimbing(states)
 
-        print(f"oneMinusBeta:{lOneMinusBeta}, bestMin:{bestMin}, bestMax:{bestMax}")
+        print(f"oneMinusBeta:{lOneMinusBeta}, bestMin:{bestMin}, bestMax:{bestMax} (1-alpha):{lOneMinusBeta}")
         lOneMinusBeta += step
     return bestMin,bestMax
-
 
 ###############
 # for testing
@@ -357,6 +419,149 @@ if __name__ == "__main__":
             ]
         }
     ]
+
+    states1 = [
+        {
+            'name':'x',
+            'numObservations':5963,
+            'oneMinusAlpha':0,
+            'transitions': [
+                {
+                    'name':'x1',
+                    'numObservations':3414,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                },
+                {
+                    'name':'x2',
+                    'numObservations':2,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                },
+                {
+                    'name':'x3',
+                    'numObservations':2547,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                }
+            ]
+        },
+        {
+            'name':'y',
+            'numObservations':10000,
+            'oneMinusAlpha':0,
+            'transitions': [
+                {
+                    'name':'y1',
+                    'numObservations':4037,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                },
+                {
+                    'name':'y2',
+                    'numObservations':5963,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                },
+                {
+                    'name':'y3',
+                    'numObservations':0,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                }
+            ]
+        },
+        {
+            'name':'z',
+            'numObservations':1560,
+            'oneMinusAlpha':0,
+            'transitions': [
+                {
+                    'name':'z1',
+                    'numObservations':407,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                },
+                {
+                    'name':'z2',
+                    'numObservations':2,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                },
+                {
+                    'name':'z3',
+                    'numObservations':1151,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                }
+            ]
+        },
+        {
+            'name':'k',
+            'numObservations':407,
+            'oneMinusAlpha':0,
+            'transitions': [
+                {
+                    'name':'k1',
+                    'numObservations':407,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                },
+                {
+                    'name':'k2',
+                    'numObservations':0,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                }
+            ]
+        },
+        {
+            'name':'w',
+            'numObservations':2547,
+            'oneMinusAlpha':0,
+            'transitions': [
+                {
+                    'name':'w1',
+                    'numObservations':2546,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                },
+                {
+                    'name':'w2',
+                    'numObservations':1,
+                    'interval':{
+                        'left':0.0,
+                        'right':0.0
+                    }
+                }
+            ]
+        }
+    ]
+
     #optimize(req ,states)
     # 0.85 0.99 0.01
-    optimizeAlphas(50, req, 0.85, 0.99,0.01,states)
+    optimizeAlphas(50, req, 0.85, 0.99,0.01,states1, False)

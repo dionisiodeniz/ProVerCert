@@ -1,3 +1,4 @@
+import math
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import networkx as nx
@@ -7,172 +8,44 @@ import re
 import subprocess
 import json
 import alphaoptimize
+import pmcparser
+import pmcanalysis
 from tkinter import filedialog
-from tkinter import ttk
+from PIL import Image, ImageTk
+
 
 plot_instance = None
 log = None
 g2 = None
-
-def extractGraphFromPrism(prismModel):
-  tokens = re.findall(r'\w+[\']?|d+|[-][>]|[\[][\]]|[()\[\]\-+=;:.]', prismModel)
-  state = '' 
-  graph ={'vars':[],'transitions':[],'states':[],'transitionLabels':{}}
-  transitionLabels={}
-  transitions = []
-  vars = []
-  source_state = -1
-  target_state = -1
-  largestTransitionVarNumber=0
-  transitionName=''
-  prevtoken=''
-  prev1token=''
-  for s in tokens:
-    if state == '':
-      if s == "[]" :
-        state = 'start-transition'
-      elif s == 'const':
-        state = 'var-start'
-    elif state == 'var-start':
-      state = 'next-var-name'
-    elif state == 'next-var-name':
-      state = ''
-      vars.append(s)
-    elif state == 'start-transition':
-      if s == "=":
-        state = 'source-state'
-    elif state == 'source-state':
-       source_state = int(s)
-       gstate = {'name':'','numObservations':0,'oneMinusAlpha':0,'transitions':[]}
-       state = 'next-target-state'
-    elif state == 'next-target-state':
-      if s ==':':
-        if prev1token != "-":
-          transitionName = prevtoken
-          # This is limited to variable names with letters followed by numbers
-          varNumber = int(re.findall(r'\d+',transitionName)[0])
-          if varNumber > largestTransitionVarNumber:
-            largestTransitionVarNumber = varNumber
-        else:
-          if len(transitionName) != 0:
-            # This is limited to variable names with letters followed by numbers
-            transitionName = re.findall(r'[a-zA-Z]+',transitionName)[0]+str(largestTransitionVarNumber+1)
-          else:
-            transitionName =''
-      elif s == '=':
-        state = 'target-state'
-      elif s == ';':
-         graph['states'].append(gstate)
-         state = ''
-    elif state == 'target-state':
-      target_state = int(s)
-      transitions.append((source_state,target_state))
-      gstate['transitions'].append({'source':source_state,'target':target_state,'name':transitionName,'numObservations':0,'interval':{'left':0,'right':0}})
-      transitionLabels[(source_state,target_state)] = transitionName
-      state = 'next-target-state'
-    prev1token = prevtoken
-    prevtoken = s
-  graph['transitions'] = transitions
-  graph['vars'] = vars
-  graph['transitionLabels'] = transitionLabels
-
-  for gstate in graph['states']:
-    stateName = gstate['name']
-    i=1
-    for transition in gstate['transitions']:
-      if transition['name'] != '':
-        stateName = transition['name'][0]
-        gstate['name']=stateName
-      else:
-        transition['name'] = stateName + str(i)
-      i += 1
-
-  return graph
-         
-def getAlgebraicExpression(output):
-  tokens = re.findall(r'\w+[\']?|\d+|[-][>]|[[][]]|[()\[\]\-+=;{}]', output)
-  state = '' 
-  result =''
-  for s in tokens:
-    if state == '':
-      if s == "Result":
-        state = 'result-row'
-    elif state == 'result-row':
-      if s == '{':
-        state = 'result'
-    elif state == 'result':
-      if s != '}':
-        result += s
-      else:
-        state = ''
-  return result
-
-def getTransitionNumObservations(src,tgt,log):
-  for t in log:
-    if t["transitionSource"] == src and t["transitionTarget"] == tgt:
-      return t['name'],t["numObservations"]
-  return '',0
-
-def populateTransitionObservations(graph,log):
-  states2 = []
-  for state in graph['states']:
-    numobs = 0
-    n=''
-    for transition in state["transitions"]:
-      n, tobs = getTransitionNumObservations(transition["source"],
-                                          transition["target"],
-                                          log)
-      transition["numObservations"] = tobs
-      transition['name'] = n
-      numobs += tobs
-    state["numObservations"] = numobs
-    if numobs != 0:
-      states2.append(state)
-  return states2
-
-def normalizeAlgebraicEquation(eq):
-  # find out if two vars are next to each other
-  newstring = ""
-  for i in range(0,len(eq)-1):
-    newstring += eq[i]
-    if eq[i].isdigit() and eq[i+1].isalpha(): # variable followed by variable
-      newstring += "*"
-    if eq[i].isdigit() and eq[i+1] == "(": # variable followed by parenthesis
-      newstring += "*"
-    if eq[i] == ")" and eq[i+1].isalpha(): # parenthesis followed by variable
-      newstring += "*"
-  newstring += eq[len(eq)-1]
-  return newstring
-
+  
 def executePrism(model,graph):
-  vars = graph['vars']
-  params = ''
-  sep=''
-  for v in vars:
-    params += sep+v+'=0.0:1.0'
-    sep=','
-  with open("prism-model.pm", "w") as file:
-    file.write(model)
-  with open ("prism-properties.pctl","w") as file:
-    #file.write('P=? [ !(s=3 | s=5) U (s=11) ]')
-    # file.write('P=? [ !(s=2 | s=5) U (s=9) ]')
-    file.write(formulaField.get())
-
-  result = subprocess.run(['prism','prism-model.pm', 'prism-properties.pctl','-param',params], shell=False,capture_output=True, text=True)
-  print(f"prism result: {result}")
-  algebraicExpression = getAlgebraicExpression(result.stdout)
-  print(f"Algebraic Expression: {algebraicExpression}")
-  eq = normalizeAlgebraicEquation(algebraicExpression)
+  pmcformula = formulaField.get()
+  eq = pmcanalysis.pmcprismanalysis(model,graph,pmcformula)
+  equationField.delete(0,tk.END)
+  equationField.insert(0,eq)
   print(f"Normalized equation: {eq}")
   prob = alphaoptimize.calculateProbability(eq,g2)
+  probabilityField.delete(0,tk.END)
   probabilityField.insert(0,str(prob))
   alpha = float(alphaField.get())
-  min,max = alphaoptimize.optimizeAlphas(50,eq,alpha, alpha,0.01,g2) #alphaoptimize.optimizeAlphas(50,eq,0.2, 0.5,0.01,g2)
+  #min,max = alphaoptimize.optimizeAlphas(50,eq,alpha, alpha,0.01,g2) #alphaoptimize.optimizeAlphas(50,eq,0.2, 0.5,0.01,g2)
+  # SmoothZeroFrequencyTransition = False
+  # for state in g2:
+  #     for transition in state['transitions']:
+  #         if transition['numObservations'] == 0:
+  #             SmoothZeroFrequencyTransition = True
+  #             break
+  #     if SmoothZeroFrequencyTransition:
+  #         break
+
+  #min,max = alphaoptimize.optimizeAlphas(50,eq,0.7, alpha,0.01,g2,SmoothZeroFrequencyTransition) 
+  min,max = pmcanalysis.calcConfidenceInterval(g2,eq,alpha)
+  intervalField.delete(0,tk.END)
   intervalField.insert(0,"["+str(min)+","+str(max)+"]")
 
 def analyzemodel():
   prismModel = txt.get('1.0',tk.END)
-  graph = extractGraphFromPrism(prismModel)
+  graph = pmcparser.extractGraphFromPrism(prismModel)
   executePrism(prismModel,graph)
 
 def updatePlot(g,transitionLabels):
@@ -181,12 +54,19 @@ def updatePlot(g,transitionLabels):
     global fig
     global canvas
     ax.clear()
+
+    # Define font properties using the axis data transformation
+    font_properties = {
+      'size': 12,
+      'transform': ax.transData  # Forces text to scale with data zooming
+    }
+
     plot_instance = EditableGraph(
             g,
             node_size=2,
             node_labels=True,
             node_label_offset=0.1,
-            node_label_fontdict=dict(size=20),
+            node_label_fontdict=font_properties,
             edge_width=1,
             arrows=True,
             edge_labels=transitionLabels,
@@ -195,95 +75,30 @@ def updatePlot(g,transitionLabels):
 
 def compilemodel():
   global graph
-  graph = extractGraphFromPrism(txt.get('1.0',tk.END))
+  graph = pmcparser.extractGraphFromPrism(txt.get('1.0',tk.END))
   updatePlot(graph['transitions'],graph['transitionLabels'])
 
-def getUniqueTransitionTemplateFromTarget(g, target):
-  unique = None
-  for t in g:
-    if t['transitionTarget'] == target:
-      if unique != None:
-        # This is not unique return None
-        return None
-      else:
-        unique = t
-  return unique
-
 def createTemplate():
-  nexttrans = 1
-  transnum = 0
-  jsonTemplate = []
-  for transition, label in graph["transitionLabels"].items():
-    if label == "1":
-      t = getUniqueTransitionTemplateFromTarget(jsonTemplate,transition[0])
-      if t != None:
-        transnum = t['transition_number']
-      else:
-        transnum = nexttrans
-        nexttrans += 1
-    else:
-      transnum = nexttrans
-      nexttrans += 1
-    jsonTemplate.append({
-      "name": label,
-      "transition_number": transnum,
-      "transitionSource": transition[0],
-      "transitionTarget" : transition[1],
-      "numObservations" : 0
-    })
+  pmcparser.createTemplate("obsTemplate.json")
 
-  with open("obsTemplate.json", "w") as file:
-    json.dump(jsonTemplate, file, indent=4)
-
-def getObservations(tnumber,obsfile):
-    for o in obsfile:
-        if o["transition_number"] == tnumber:
-            return o["count"]
-    return 0
-
-def addTransitionObservations(templatefile, observationsfile):
-  try:
-    with open(templatefile, 'r') as file:
-      transfile  = json.load(file)
-  except FileNotFoundError:
-    print("Error: The file  trans.json' was not found.")
-    exit(1)
-  except json.JSONDecodeError as e:
-    print(f"Error: Failed to decode JSON from the trans file. Details: {e}")
-    exit(1)
-
-  try:
-    with open(observationsfile,'r') as file1:
-      obsfile = json.load(file1)
-  except FileNotFoundError:
-    print("Error: The file 'obs.json' was not found.")
-    exit(1)
-  except json.JSONDecodeError as e:
-    print(f"Error: Failed to decode JSON from the obs file. Details: {e}")
-    exit(1)
-
-  for t in transfile:
-    n = getObservations(t["transition_number"],obsfile)
-    t["numObservations"] = n
-
-  try:
-    with open(templatefile,"w") as file:
-      json.dump(transfile,file)
-  except FileNotFoundError:
-    print("error writing file")
-
+def populateTemplate():
+  datapath = filedialog.askopenfilename(title="Observations File")
+  if not datapath:
+    return
+  file_path = filedialog.askopenfilename(title="Log Template File")
+  if not file_path:
+    return
+  pmcparser.addTransitionObservations(file_path,datapath)
 
 def loadlog():
   global g2
-  datapath = filedialog.askopenfilename(title="Observations File")
-  file_path = filedialog.askopenfilename(title="Log Template File")
-  addTransitionObservations(file_path,datapath)
-  
+  file_path = filedialog.askopenfilename(title="Log File")
+  logField.delete(0,tk.END)
   logField.insert(0,file_path)
   try:
     with open(file_path, 'r') as file:
         log  = json.load(file)
-        g2 = populateTransitionObservations(graph,log)
+        g2 = pmcparser.populateTransitionObservations(graph,log)
   except FileNotFoundError:
     print("Error: The file 'data.json' was not found.")
   except json.JSONDecodeError as e:
@@ -296,7 +111,6 @@ def loadmodel():
 
   global root
   root.title(file_path)
-  #logField.insert(0,file_path)
   try:
     with open(file_path, 'r') as file:
         txt.delete("1.0", tk.END)
@@ -380,6 +194,12 @@ modelfilename=""
 
 root = tk.Tk()
 root.title("Model Editor 0.2")
+icon_image = Image.open("approved-icon.png")
+icon_photo = ImageTk.PhotoImage(icon_image)
+root.icon_photo = icon_photo 
+root.wm_iconbitmap()
+root.iconphoto(False, root.icon_photo)
+
 
 graph = [
     (0,1),
@@ -448,12 +268,14 @@ fieldsFrame.pack(fill=tk.X)
 tk.Label(fieldsFrame, text="Formula: ").grid(row=0, column=0, padx=10,pady=5)
 tk.Label(fieldsFrame, text="Log: ").grid(row=1, column=0,padx=10,pady=5)
 tk.Label(fieldsFrame, text="1-Alpha: ").grid(row=2, column=0,padx=10,pady=5)
-tk.Label(fieldsFrame, text="Interval: ").grid(row=3,column=0, padx=10,pady=5)
-tk.Label(fieldsFrame, text="Probability: ").grid(row=4, column=0,padx=10,pady=5)
+tk.Label(fieldsFrame, text="Equation").grid(row=3,column=0, padx=10,pady=5)
+tk.Label(fieldsFrame, text="Interval: ").grid(row=4,column=0, padx=10,pady=5)
+tk.Label(fieldsFrame, text="Probability: ").grid(row=5, column=0,padx=10,pady=5)
 
 formulaField = tk.Entry(fieldsFrame,width=50)
 logField = tk.Entry(fieldsFrame,width=50)
 alphaField = tk.Entry(fieldsFrame, width=50)
+equationField = tk.Entry(fieldsFrame, width=50)
 intervalField = tk.Entry(fieldsFrame,width=50)
 probabilityField = tk.Entry(fieldsFrame,width=50)
 alphaField = tk.Entry(fieldsFrame, width=50)
@@ -461,24 +283,28 @@ alphaField = tk.Entry(fieldsFrame, width=50)
 formulaField.grid(row=0, column=1,padx=10, pady=5)
 logField.grid(row=1,column=1,padx=10,pady=5)
 alphaField.grid(row=2,column=1,padx=10,pady=5)
-intervalField.grid(row=3,column=1,padx=10,pady=5)
-probabilityField.grid(row=4,column=1,padx=10,pady=5)
-
-
+equationField.grid(row=3,column=1,padx=10,pady=5)
+intervalField.grid(row=4,column=1,padx=10,pady=5)
+probabilityField.grid(row=5,column=1,padx=10,pady=5)
 
 buttonFrame = tk.Frame(frame,pady=10)
 buttonFrame.pack(fill=tk.X)
+buttonFrame1 = tk.Frame(frame,pady=10)
+buttonFrame1.pack(fill=tk.X)
 compileButton = tk.Button(buttonFrame, text="Compile",command=compilemodel)
 compileButton.pack(side=tk.RIGHT,padx=5)
 analyzeButton = tk.Button(buttonFrame, text="Analyze", command = analyzemodel)
 analyzeButton.pack(side=tk.RIGHT, padx=5)
 createTemplateButton = tk.Button(buttonFrame, text="Create Log Template", command=createTemplate)
 createTemplateButton.pack(side=tk.RIGHT,padx=5)
-loadLogButton = tk.Button(buttonFrame, text="Load Log",command=loadlog)
+populateTemplateButton = tk.Button(buttonFrame, text="Populate Template", command=populateTemplate)
+populateTemplateButton.pack(side=tk.RIGHT, padx=5)
+
+loadLogButton = tk.Button(buttonFrame1, text="Load Log",command=loadlog)
 loadLogButton.pack(side=tk.RIGHT,padx=5)
-saveModelButton = tk.Button(buttonFrame, text="Save Model",command=savemodel)
+saveModelButton = tk.Button(buttonFrame1, text="Save Model",command=savemodel)
 saveModelButton.pack(side=tk.RIGHT, padx=5)
-loadModelButton = tk.Button(buttonFrame, text="Load Model", command=loadmodel)
+loadModelButton = tk.Button(buttonFrame1, text="Load Model", command=loadmodel)
 loadModelButton.pack(side=tk.RIGHT, padx=5)
 
 
