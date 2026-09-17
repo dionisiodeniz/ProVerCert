@@ -1,0 +1,240 @@
+[
+    {
+        "name": "a1",
+        "transition_number": 1,
+        "transitionSource": 1,
+        "transitionTarget": 2,
+        "numObservations": 0
+    },
+    {
+        "name": "a2",
+        "transition_number": 4,
+        "transitionSource": 1,
+        "transitionTarget": 3,
+        "numObservations": 10
+    },
+    {
+        "name": "b1",
+        "transition_number": 2,
+        "transitionSource": 2,
+        "transitionTarget": 4,
+        "numObservations": 0
+    },
+    {
+        "name": "b2",
+        "transition_number": 3,
+        "transitionSource": 2,
+        "transitionTarget": 5,
+        "numObservations": 0
+    },
+    {
+        "name": "1",
+        "transition_number": 4,
+        "transitionSource": 3,
+        "transitionTarget": 6,
+        "numObservations": 10
+    },
+    {
+        "name": "1",
+        "transition_number": 2,
+        "transitionSource": 4,
+        "transitionTarget": 6,
+        "numObservations": 0
+    },
+    {
+        "name": "1",
+        "transition_number": 3,
+        "transitionSource": 5,
+        "transitionTarget": 6,
+        "numObservations": 0
+    },
+    {
+        "name": "1",
+        "transition_number": 5,
+        "transitionSource": 6,
+        "transitionTarget": 7,
+        "numObservations": 96906
+    },
+    {
+        "name": "g1",
+        "transition_number": 6,
+        "transitionSource": 7,
+        "transitionTarget": 9,
+        "numObservations": 0
+    },
+    {
+        "name": "g2",
+        "transition_number": 7,
+        "transitionSource": 7,
+        "transitionTarget": 8,
+        "numObservations": 96906
+    },
+    {
+        "name": "1",
+        "transition_number": 7,
+        "transitionSource": 8,
+        "transitionTarget": 10,
+        "numObservations": 96906
+    },
+    {
+        "name": "1",
+        "transition_number": 6,
+        "transitionSource": 9,
+        "transitionTarget": 10,
+        "numObservations": 0
+    },
+    {
+        "name": "j1",
+        "transition_number": 9,
+        "transitionSource": 10,
+        "transitionTarget": 11,
+        "numObservations": 96906
+    },
+    {
+        "name": "j2",
+        "transition_number": 10,
+        "transitionSource": 10,
+        "transitionTarget": 12,
+        "numObservations": 0
+    },
+    {
+        "name": "1",
+        "transition_number": 9,
+        "transitionSource": 11,
+        "transitionTarget": 13,
+        "numObservations": 96906
+    },
+    {
+        "name": "1",
+        "transition_number": 10,
+        "transitionSource": 12,
+        "transitionTarget": 13,
+        "numObservations": 0
+    },
+    {
+        "name": "q1",
+        "transition_number": 40,
+        "transitionSource": 13,
+        "transitionTarget": 22,
+        "numObservations": 829
+    },
+    {
+        "name": "q2",
+        "transition_number": 41,
+        "transitionSource": 13,
+        "transitionTarget": 21,
+        "numObservations": 81078
+    },
+    {
+        "name": "1",
+        "transition_number": 41,
+        "transitionSource": 21,
+        "transitionTarget": 23,
+        "numObservations": 81078
+    },
+    {
+        "name": "1",
+        "transition_number": 40,
+        "transitionSource": 22,
+        "transitionTarget": 23,
+        "numObservations": 829
+    },
+    {
+        "name": "r1",
+        "transition_number": 42,
+        "transitionSource": 23,
+        "transitionTarget": 25,
+        "numObservations": 0
+    },
+    {
+        "name": "r2",
+        "transition_number": 43,
+        "transitionSource": 23,
+        "transitionTarget": 24,
+        "numObservations": 81907
+    },
+    {
+        "name": "1",
+        "transition_number": 42,
+        "transitionSource": 25,
+        "transitionTarget": 26,
+        "numObservations": 0
+    },
+    {
+        "name": "1",
+        "transition_number": 43,
+        "transitionSource": 24,
+        "transitionTarget": 26,
+        "numObservations": 81907
+    },
+    {
+        "name": "1",
+        "transition_number": 11,
+        "transitionSource": 26,
+        "transitionTarget": 14,
+        "numObservations": 193804
+    },
+    {
+        "name": "n1",
+        "transition_number": 12,
+        "transitionSource": 14,
+        "transitionTarget": 16,
+        "numObservations": 0
+    },
+    {
+        "name": "n2",
+        "transition_number": 13,
+        "transitionSource": 14,
+        "transitionTarget": 15,
+        "numObservations": 193636
+    },
+    {
+        "name": "1",
+        "transition_number": 13,
+        "transitionSource": 15,
+        "transitionTarget": 17,
+        "numObservations": 193636
+    },
+    {
+        "name": "1",
+        "transition_number": 12,
+        "transitionSource": 16,
+        "transitionTarget": 17,
+        "numObservations": 0
+    },
+    {
+        "name": "p1",
+        "transition_number": 17,
+        "transitionSource": 17,
+        "transitionTarget": 18,
+        "numObservations": 0
+    },
+    {
+        "name": "p2",
+        "transition_number": 18,
+        "transitionSource": 17,
+        "transitionTarget": 19,
+        "numObservations": 193820
+    },
+    {
+        "name": "1",
+        "transition_number": 17,
+        "transitionSource": 18,
+        "transitionTarget": 20,
+        "numObservations": 0
+    },
+    {
+        "name": "1",
+        "transition_number": 18,
+        "transitionSource": 19,
+        "transitionTarget": 20,
+        "numObservations": 193820
+    },
+    {
+        "name": "1",
+        "transition_number": 19,
+        "transitionSource": 20,
+        "transitionTarget": 20,
+        "numObservations": 0
+    }
+]

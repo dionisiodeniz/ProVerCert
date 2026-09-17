@@ -10,7 +10,7 @@ import json
 # e.g., ((a*b)+(c*d))/16 -- However this only happens if we have precalculated transition probabilities which we will not have
 def getSumOfProducts(equation):
     tokens = re.findall(r'[A-Za-z0-9]+|\*|\+|\-|\(|\)', equation)
-    print(f"tokens: {tokens}")
+    #print(f"tokens: {tokens}")
     sumprods = []
     prod=[]
     var = ""
@@ -41,7 +41,7 @@ def getSumOfProducts(equation):
     return sumprods
 
 def getAlgebraicExpression(output):
-  tokens = re.findall(r'\w+[\']?|\d+|[-][>]|[[][]]|[()\[\]\-+=;{}]', output)
+  tokens = re.findall(r'\w+[\']?|\d+|[-][>]|\[\]|[()\[\]\-+=;{}]', output)
   state = '' 
   result =''
   for s in tokens:
@@ -160,7 +160,7 @@ def getUniqueTransitionTemplateFromTarget(g, target):
   return unique
 
 
-def createTemplate(filename):
+def createTemplate(filename,graph):
   nexttrans = 1
   transnum = 0
   jsonTemplate = []
@@ -192,7 +192,7 @@ def getObservations(tnumber,obsfile):
             return o["count"]
     return 0
 
-def addTransitionObservations(templatefile, observationsfile):
+def addTransitionObservations(templatefile, observationsfile, replace):
   try:
     with open(templatefile, 'r') as file:
       transfile  = json.load(file)
@@ -207,7 +207,7 @@ def addTransitionObservations(templatefile, observationsfile):
     with open(observationsfile,'r') as file1:
       obsfile = json.load(file1)
   except FileNotFoundError:
-    print("Error: The file 'obs.json' was not found.")
+    print(f"Error: The file '{observationsfile}' was not found.")
     exit(1)
   except json.JSONDecodeError as e:
     print(f"Error: Failed to decode JSON from the obs file. Details: {e}")
@@ -215,7 +215,10 @@ def addTransitionObservations(templatefile, observationsfile):
 
   for t in transfile:
     n = getObservations(t["transition_number"],obsfile)
-    t["numObservations"] = n
+    if replace:
+      t["numObservations"] = n
+    else:
+      t["numObservations"] += n
 
   try:
     with open(templatefile,"w") as file:

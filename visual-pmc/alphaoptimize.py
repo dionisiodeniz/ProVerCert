@@ -98,10 +98,10 @@ def calculateProbability(eq, states):
         for transition in state['transitions']:
             if len(transition["name"]) != 0 and not transition['name'][0].isdigit():
                 probEquation = probEquation.replace(transition['name'],"transitionProbabilities['"+transition['name']+"']")
-                print(f"transitionProbability[{transition['name']}]={transitionProbabilities[transition['name']]}")
-    print(f"probEquation: {probEquation}")
+                #print(f"transitionProbability[{transition['name']}]={transitionProbabilities[transition['name']]}")
+    #print(f"probEquation: {probEquation}")
     prob = eval(probEquation)
-    print(f"probability: {prob}")
+    #print(f"probability: {prob}")
     return prob
 
 

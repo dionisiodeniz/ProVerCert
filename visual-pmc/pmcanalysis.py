@@ -16,9 +16,9 @@ def pmcprismanalysis(model,graph,pmcformula):
         file.write(pmcformula)
 
     result = subprocess.run(['prism','prism-model.pm', 'prism-properties.pctl','-param',params], shell=False,capture_output=True, text=True)
-    print(f"prism result: {result}")
+    #print(f"prism result: {result}")
     algebraicExpression = pmcparser.getAlgebraicExpression(result.stdout)
-    print(f"Algebraic Expression: {algebraicExpression}")
+    #print(f"Algebraic Expression: {algebraicExpression}")
     eq = pmcparser.normalizeAlgebraicEquation(algebraicExpression)
     return eq
 
@@ -136,7 +136,7 @@ def getCovarianceOfSumOfProducts(states, varMeans,varNumSamples, products):
 
 def calcConfidenceInterval(states, equation, confidence):
     products = pmcparser.getSumOfProducts(equation)
-    print(f"products:{products}")
+    #print(f"products:{products}")
     varMeans,varNumSamples = getMeansNumSamples(states)
     totalVariance = 0.0
     for i in range(len(products)):
@@ -144,11 +144,11 @@ def calcConfidenceInterval(states, equation, confidence):
     totalCovariance = getCovarianceOfSumOfProducts(states,varMeans,varNumSamples,products)
     totalVariance += totalCovariance
     totalSigma = math.sqrt(totalVariance)
-    print(f"total variance: {totalVariance}, total standard deviation {totalSigma}")
+    #print(f"total variance: {totalVariance}, total standard deviation {totalSigma}")
     n = getSampleSizeFromProducts(products,varNumSamples)
     alpha = 1.0-confidence
     zscore = alphaoptimize.calculateZscore(1.0-(alpha / 2.0))
     error = zscore * (totalSigma / math.sqrt(n))
-    print(f"Error: {error}")
+    #print(f"Error: {error}")
     phi = alphaoptimize.calculateProbability(equation, states)
     return phi - error, phi + error

@@ -79,7 +79,7 @@ def compilemodel():
   updatePlot(graph['transitions'],graph['transitionLabels'])
 
 def createTemplate():
-  pmcparser.createTemplate("obsTemplate.json")
+  pmcparser.createTemplate("obsTemplate.json",graph)
 
 def populateTemplate():
   datapath = filedialog.askopenfilename(title="Observations File")
@@ -88,7 +88,7 @@ def populateTemplate():
   file_path = filedialog.askopenfilename(title="Log Template File")
   if not file_path:
     return
-  pmcparser.addTransitionObservations(file_path,datapath)
+  pmcparser.addTransitionObservations(file_path,datapath, replace=True)
 
 def loadlog():
   global g2
