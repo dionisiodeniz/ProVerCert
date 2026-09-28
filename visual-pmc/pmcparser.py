@@ -58,6 +58,23 @@ def getAlgebraicExpression(output):
         state = ''
   return result
 
+def extract_algebraic_equation(value: str) -> str:
+    """Return the algebraic equation directly from the serialized string."""
+    result_start = value.rfind("Result:")
+    if result_start == -1:
+        raise ValueError("No PRISM Result entry found")
+
+    result_end = value.find(r"\n", result_start)
+    if result_end == -1:
+        result_end = len(value)
+
+    result_line = value[result_start:result_end]
+    _, separator, equation = result_line.rpartition(": ")
+    if not separator:
+        raise ValueError("No algebraic equation found in PRISM Result entry")
+
+    return equation.partition(" (exact)")[0].strip()
+
 def normalizeAlgebraicEquation(eq):
   # find out if two vars are next to each other
   newstring = ""

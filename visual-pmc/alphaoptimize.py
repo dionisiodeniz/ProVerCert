@@ -151,8 +151,8 @@ def optimize(req ,states):
     # maxval = eval(maxPathEquation)()
 
 
-    print(f"min lambda: {minPathEquation}")
-    print(f"max lambda: {maxPathEquation}")
+    # print(f"min lambda: {minPathEquation}")
+    # print(f"max lambda: {maxPathEquation}")
 
     #print(f"bound: {bounds}")
 
@@ -236,8 +236,8 @@ def optimizeAlphas(maxIterations, req, oneMinusBeta, upperBound,step,states,Smoo
                             left,right = computeInterval(state['oneMinusAlpha'],
                                                 transition['numObservations'] / state['numObservations'],
                                                 state['numObservations'])
-                    if transition['name'] in req:
-                        print(f"computeInterval: transition({transition['name']}) left({left}) right({right})")
+                    # if transition['name'] in req:
+                    #     print(f"computeInterval: transition({transition['name']}) left({left}) right({right})")
                     if left <0 :
                         left = 0
                     if right >1 :
@@ -250,7 +250,7 @@ def optimizeAlphas(maxIterations, req, oneMinusBeta, upperBound,step,states,Smoo
             prevMin = min
             prevMax = max
             min, max = optimize(req,states)
-            print(f"\t optimize: min({min}) max({max}) width({(max-min)})")
+            #print(f"\t optimize: min({min}) max({max}) width({(max-min)})")
             # if max-min == 0:
             #     print(f"\t width zero: min:{min}, max:{max}")
             if max == 0:
@@ -269,7 +269,7 @@ def optimizeAlphas(maxIterations, req, oneMinusBeta, upperBound,step,states,Smoo
 
             hillClimbing(states)
 
-        print(f"oneMinusBeta:{lOneMinusBeta}, bestMin:{bestMin}, bestMax:{bestMax} (1-alpha):{lOneMinusBeta}")
+        #print(f"oneMinusBeta:{lOneMinusBeta}, bestMin:{bestMin}, bestMax:{bestMax} (1-alpha):{lOneMinusBeta}")
         lOneMinusBeta += step
     return bestMin,bestMax
 

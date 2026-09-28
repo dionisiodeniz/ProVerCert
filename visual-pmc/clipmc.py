@@ -66,13 +66,15 @@ if command == "analyze":
 
     eq = pmcanalysis.pmcprismanalysis(prismmodel,graph,argd['pmcformula'])
     prob = alphaoptimize.calculateProbability(eq,g2)
-    min,max = pmcanalysis.calcConfidenceInterval(g2,eq,float(argd['confidence']))
+    conf = float(argd['confidence'])
+    minv,maxv = pmcanalysis.calcConfidenceInterval(g2,eq,conf)
+    minp,maxp = alphaoptimize.optimizeAlphas(50, eq, max(0,conf-0.15), conf,0.01,g2, False)
 
     # This is human readable output
     #print(f"probability: {prob} confidence interval [{min},{max}] equation: {eq}")
 
     # This is csv style
-    print(f"{prob},{min},{max},{eq}")
+    print(f"{prob},{minv},{maxv},{eq},{minp},{maxp}")
 elif command == "create_template":
     prismmodel=""
     try:

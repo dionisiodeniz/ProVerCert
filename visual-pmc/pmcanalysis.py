@@ -17,10 +17,17 @@ def pmcprismanalysis(model,graph,pmcformula):
 
     result = subprocess.run(['prism','prism-model.pm', 'prism-properties.pctl','-param',params], shell=False,capture_output=True, text=True)
     #print(f"prism result: {result}")
-    algebraicExpression = pmcparser.getAlgebraicExpression(result.stdout)
+
+    # Old algebraic equation for prism 4.8X
+    #algebraicExpression = pmcparser.getAlgebraicExpression(result.stdout)
+    
+    # new algebraic expression parsing for prism 4.10
+    algebraicExpression = pmcparser.extract_algebraic_equation(result.stdout)
     #print(f"Algebraic Expression: {algebraicExpression}")
-    eq = pmcparser.normalizeAlgebraicEquation(algebraicExpression)
-    return eq
+    
+    # prism 4.10 does not need normalization
+    # eq = pmcparser.normalizeAlgebraicEquation(algebraicExpression)
+    return algebraicExpression
 
 def isNumber(str):
   try:
