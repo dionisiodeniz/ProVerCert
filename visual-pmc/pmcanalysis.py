@@ -1,6 +1,7 @@
 import subprocess
 import pmcparser
 import math
+import sys
 import alphaoptimize
 
 def pmcprismanalysis(model,graph,pmcformula):
@@ -142,20 +143,91 @@ def getCovarianceOfSumOfProducts(states, varMeans,varNumSamples, products):
   return cov
 
 def calcConfidenceInterval(states, equation, confidence):
-    products = pmcparser.getSumOfProducts(equation)
-    #print(f"products:{products}")
-    varMeans,varNumSamples = getMeansNumSamples(states)
-    totalVariance = 0.0
-    for i in range(len(products)):
-        totalVariance += getVarianceOfProduct(varMeans, varNumSamples,products[i])
-    totalCovariance = getCovarianceOfSumOfProducts(states,varMeans,varNumSamples,products)
-    totalVariance += totalCovariance
-    totalSigma = math.sqrt(totalVariance)
-    #print(f"total variance: {totalVariance}, total standard deviation {totalSigma}")
-    n = getSampleSizeFromProducts(products,varNumSamples)
-    alpha = 1.0-confidence
-    zscore = alphaoptimize.calculateZscore(1.0-(alpha / 2.0))
-    error = zscore * (totalSigma / math.sqrt(n))
-    #print(f"Error: {error}")
-    phi = alphaoptimize.calculateProbability(equation, states)
-    return phi - error, phi + error
+    transition_values = {
+        transition["name"]: (
+            transition["numObservations"] / state["numObservations"]
+        )
+        for state in states
+        if state["numObservations"] > 0
+        for transition in state["transitions"]
+        if transition["name"] and not transition["name"][0].isdigit()
+    }
+    active_names = {
+        name for name in transition_values
+        if alphaoptimize._contains_transition_name(equation, name)
+    }
+    replacements = {
+        name: f"transition_values[{name!r}]"
+        for name in active_names
+    }
+    probability_expression = alphaoptimize._replace_transition_names(
+        equation,
+        replacements,
+    )
+    probability_code = compile(
+        probability_expression,
+        "<probability equation>",
+        "eval",
+    )
+
+    def evaluate(values):
+        return float(eval(
+            probability_code,
+            {"__builtins__": {}},
+            {"transition_values": values},
+        ))
+
+    gradient_step = math.sqrt(sys.float_info.epsilon)
+    gradients = {}
+    for name in active_names:
+        parameter = transition_values[name]
+        step = gradient_step * max(1.0, abs(parameter))
+        values_above = dict(transition_values)
+        values_below = dict(transition_values)
+        values_above[name] = parameter + step
+        values_below[name] = parameter - step
+        gradients[name] = (
+            evaluate(values_above) - evaluate(values_below)
+        ) / (2.0 * step)
+
+    total_variance = 0.0
+    for state in states:
+        observations = state["numObservations"]
+        if observations <= 0:
+            continue
+
+        active_transitions = [
+            transition for transition in state["transitions"]
+            if transition["name"] in active_names
+        ]
+        for first_index, first in enumerate(active_transitions):
+            first_name = first["name"]
+            first_probability = transition_values[first_name]
+            for second_index, second in enumerate(active_transitions):
+                second_name = second["name"]
+                second_probability = transition_values[second_name]
+                if first_index == second_index:
+                    covariance = (
+                        first_probability * (1.0 - first_probability)
+                        / observations
+                    )
+                else:
+                    covariance = (
+                        -first_probability * second_probability / observations
+                    )
+                total_variance += (
+                    gradients[first_name]
+                    * gradients[second_name]
+                    * covariance
+                )
+
+    if total_variance < -1e-12:
+        raise ValueError(
+            f"Calculated probability variance is negative: {total_variance}"
+        )
+
+    probability = evaluate(transition_values)
+    alpha = 1.0 - confidence
+    zscore = alphaoptimize.calculateZscore(1.0 - (alpha / 2.0))
+    error = zscore * math.sqrt(max(0.0, total_variance))
+    return max(0.0, probability - error), min(1.0, probability + error)

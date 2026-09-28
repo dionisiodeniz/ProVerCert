@@ -1,4 +1,5 @@
 import math
+import re
 import sys
 import scipy.optimize as opt
 import random
@@ -74,7 +75,7 @@ def computeInterval(confidence, parameter, observations):
     zscore= calculateZscore(1.0 - (alpha / 2.0))
 
     firstpart = parameter + (zscore*zscore)/(2.0*observations)
-    secondtpart = (zscore*zscore)*math.sqrt( ( parameter*(1.0-parameter) + (zscore*zscore)/(4.0*observations))/observations )
+    secondtpart = zscore*math.sqrt( ( parameter*(1.0-parameter) + (zscore*zscore)/(4.0*observations))/observations )
     denom = 1.0+(zscore*zscore)/observations
 
     left = (firstpart - secondtpart)/denom
@@ -85,89 +86,182 @@ def computeInterval(confidence, parameter, observations):
 # calculate the probability given:
 # eq: equation 
 # states with number of observations
+def _replace_transition_names(equation, replacements):
+    result = equation
+    for name in sorted(replacements, key=len, reverse=True):
+        pattern = rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])"
+        result = re.sub(pattern, replacements[name], result)
+    return result
+
+
+def _contains_transition_name(equation, name):
+    pattern = rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])"
+    return re.search(pattern, equation) is not None
+
+
+# calculate the probability given:
+# eq: equation
+# states with number of observations
 def calculateProbability(eq, states):
-    transitionProbabilities={}
+    transitionProbabilities = {}
     for state in states:
-        for transition in state['transitions']:
-            if transition['numObservations'] == 0 or state['numObservations'] == 0:
-                transitionProbabilities[transition['name']] = 0    
+        for transition in state["transitions"]:
+            if transition["numObservations"] == 0 or state["numObservations"] == 0:
+                transitionProbabilities[transition["name"]] = 0
             else:
-                transitionProbabilities[transition['name']] = transition['numObservations'] / state['numObservations']
-    probEquation = eq
-    for state in states:
-        for transition in state['transitions']:
-            if len(transition["name"]) != 0 and not transition['name'][0].isdigit():
-                probEquation = probEquation.replace(transition['name'],"transitionProbabilities['"+transition['name']+"']")
-                #print(f"transitionProbability[{transition['name']}]={transitionProbabilities[transition['name']]}")
-    #print(f"probEquation: {probEquation}")
-    prob = eval(probEquation)
-    #print(f"probability: {prob}")
-    return prob
+                transitionProbabilities[transition["name"]] = (
+                    transition["numObservations"] / state["numObservations"]
+                )
+
+    replacements = {
+        name: f"transitionProbabilities[{name!r}]"
+        for name in transitionProbabilities
+        if name and not name[0].isdigit()
+    }
+    probEquation = _replace_transition_names(eq, replacements)
+    return eval(probEquation)
+
+
+def _feasible_state_point(state_bounds):
+    lower_sum = sum(left for left, _ in state_bounds)
+    upper_sum = sum(right for _, right in state_bounds)
+    tolerance = 1e-10
+
+    if lower_sum > 1.0 + tolerance or upper_sum < 1.0 - tolerance:
+        raise ValueError(
+            "Transition confidence intervals do not contain probabilities "
+            f"that sum to one: lower sum={lower_sum}, upper sum={upper_sum}"
+        )
+
+    capacity = upper_sum - lower_sum
+    if capacity <= tolerance:
+        return [left for left, _ in state_bounds]
+
+    fraction = (1.0 - lower_sum) / capacity
+    return [
+        left + fraction * (right - left)
+        for left, right in state_bounds
+    ]
+
+
+def _check_optimization_result(result, constraints, objective_name):
+    if not result.success:
+        raise RuntimeError(
+            f"{objective_name} optimization failed: {result.message}"
+        )
+
+    max_constraint_error = max(
+        (abs(constraint["fun"](result.x)) for constraint in constraints),
+        default=0.0,
+    )
+    if max_constraint_error > 1e-7:
+        raise RuntimeError(
+            f"{objective_name} optimization returned an infeasible result; "
+            f"maximum constraint error is {max_constraint_error}"
+        )
 
 
 # e.g. req = (-160*w1*y2*x1-160*w1*y2*x2+77*k1*z1*y1+160*y2*x1-77*z1*y1-77*z2*y1+160*w1*y2+160*y1)/160"
 # states=[{name: '', numObservations: 0, oneMinusAlpha:0,transitions:[{name:'', numObservations: 0, interval:{left:0,right:0}}]}]
-def optimize(req ,states):
-    varnum={}
-    bounds =[]
-    i=0
-    for state in states:
-        for transition in state['transitions']:
-            varnum[transition['name']] = i
-            i += 1
-            bounds.append((transition['interval']['left'],transition['interval']['right']))
+def optimize(req, states):
+    equation_names = {
+        transition["name"]
+        for state in states
+        for transition in state["transitions"]
+        if transition["name"]
+        and not transition["name"][0].isdigit()
+        and _contains_transition_name(req, transition["name"])
+    }
+    active_states = [
+        state for state in states
+        if any(
+            transition["name"] in equation_names
+            for transition in state["transitions"]
+        )
+    ]
 
-    sep = ""
-    i=0
-    cons = []
-    consstr = []
+    if not active_states:
+        value = float(eval(req, {"__builtins__": {}}, {}))
+        return value, value
 
-    for state in states:
-        constrain = "lambda x: "
-        sep = ""
-        for transition in state['transitions']:
-            constrain += sep +"x["+str(varnum[transition['name']])+"]"
-            sep = "+"
-        constrain += " - 1"
-        consstr.append(constrain)
-        cons.append({'type':'eq','fun':eval(constrain)}) 
+    bounds = []
+    initial_point = []
+    constraints = []
+    transition_indexes = {}
 
-    minPathEquation = req
-    maxPathEquation = "-("+req+")"
+    for state in active_states:
+        state_indexes = []
+        state_bounds = []
+        for transition in state["transitions"]:
+            name = transition["name"]
+            index = len(bounds)
+            state_indexes.append(index)
+            interval = transition["interval"]
+            transition_bounds = (
+                float(interval["left"]),
+                float(interval["right"]),
+            )
+            if transition_bounds[0] > transition_bounds[1]:
+                raise ValueError(
+                    f"Invalid interval for transition {name}: "
+                    f"{transition_bounds}"
+                )
+            bounds.append(transition_bounds)
+            state_bounds.append(transition_bounds)
 
-    num2name=""
+            if name and not name[0].isdigit():
+                if name in transition_indexes:
+                    raise ValueError(
+                        f"Transition parameter name {name!r} is not unique"
+                    )
+                transition_indexes[name] = index
 
-    for state in states:
-        for transition in state['transitions']:
-            if len(transition["name"]) != 0 and not transition['name'][0].isdigit():
-                minPathEquation = minPathEquation.replace(transition['name'],"x["+str(varnum[transition['name']])+"]")
-                maxPathEquation = maxPathEquation.replace(transition['name'],"x["+str(varnum[transition['name']])+"]")
-                num2name += f"trans#({varnum[transition['name']]}):name({transition['name']})\n"
+        initial_point.extend(_feasible_state_point(state_bounds))
+        indexes = tuple(state_indexes)
+        constraints.append({
+            "type": "eq",
+            "fun": lambda x, indexes=indexes: (
+                sum(x[index] for index in indexes) - 1.0
+            ),
+        })
 
-    minPathEquation = "lambda x: "+minPathEquation
-    maxPathEquation = "lambda x: "+maxPathEquation
+    replacements = {
+        name: f"x[{index}]"
+        for name, index in transition_indexes.items()
+        if name in equation_names
+    }
+    objective_expression = _replace_transition_names(req, replacements)
+    objective_code = compile(
+        objective_expression,
+        "<probability equation>",
+        "eval",
+    )
 
-    # minval = eval(minPathEquation)()
-    # maxval = eval(maxPathEquation)()
+    def objective(x):
+        return float(eval(objective_code, {"__builtins__": {}}, {"x": x}))
 
+    solver_options = {"ftol": 1e-12, "maxiter": 1000}
+    minres = opt.minimize(
+        objective,
+        initial_point,
+        method="SLSQP",
+        bounds=bounds,
+        constraints=constraints,
+        options=solver_options,
+    )
+    maxres = opt.minimize(
+        lambda x: -objective(x),
+        initial_point,
+        method="SLSQP",
+        bounds=bounds,
+        constraints=constraints,
+        options=solver_options,
+    )
 
-    # print(f"min lambda: {minPathEquation}")
-    # print(f"max lambda: {maxPathEquation}")
+    _check_optimization_result(minres, constraints, "Minimum")
+    _check_optimization_result(maxres, constraints, "Maximum")
 
-    #print(f"bound: {bounds}")
-
-    minres = opt.shgo(eval(minPathEquation), bounds, n=150, constraints=cons)
-    maxres = opt.shgo(eval(maxPathEquation), bounds, n=150, constraints=cons)
-
-    # if minres['fun'] == abs(maxres['fun']):
-    #     print(f"min lambda: {minPathEquation}")
-    #     print(f"max lambda: {maxPathEquation}")
-    #     print(f"bound: {bounds}")
-    #     print(f"constraints: {consstr}")
-    #     print(f"trans2name:{num2name}")
-
-
-    return minres['fun'],abs(maxres['fun'])
+    return float(minres.fun), float(-maxres.fun)
 
 
 def hillClimbing(alphas):
