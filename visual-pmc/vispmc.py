@@ -4,15 +4,15 @@
 # Licensed under a BSD (SEI)-style license, please see license.txt or contact permission@sei.cmu.edu for full terms.
 # [DISTRIBUTION STATEMENT A] This material has been approved for public release and unlimited distribution.  Please see Copyright notice for non-US Government use and distribution.
 # This Software includes and/or makes use of Third-Party Software each subject to its own license.
-
 # DM26-0076
 
 
+from pathlib import Path
 import math
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import networkx as nx
-from netgraph import EditableGraph
+from netgraph import EditableGraph, get_sugiyama_layout
 import tkinter as tk
 import re
 import subprocess
@@ -58,37 +58,129 @@ def analyzemodel():
   graph = pmcparser.extractGraphFromPrism(prismModel)
   executePrism(prismModel,graph)
 
-def updatePlot(g,transitionLabels):
+def updatePlot(g,transitionLabels,node_layout="spring",preserve_view=False):
     global plot_instance
     global ax
     global fig
     global canvas
+
+    view = None
+    if preserve_view:
+      view = (ax.get_xlim(),ax.get_ylim())
+
     ax.clear()
 
-    # Define font properties using the axis data transformation
-    font_properties = {
-      'size': 12,
-      'transform': ax.transData  # Forces text to scale with data zooming
+    network = nx.Graph(g)
+    layout_edges = [
+      (source,target)
+      for source,target in g
+      if source != target
+    ]
+    directed_graph = nx.DiGraph(layout_edges)
+
+    layout = node_layout
+    layout_kwargs = None
+    graph_origin = (0,0)
+    graph_scale = (1,1)
+    edge_layout = "curved"
+    edge_layout_kwargs = {
+      "bundle_parallel_edges": False,
+      "total_iterations": 100
     }
+    if (
+      set(directed_graph.nodes) == set(network.nodes)
+      and nx.is_directed_acyclic_graph(directed_graph)
+    ):
+      margin = 0.10
+      rank_spacing = 0.12
+      longest_path = nx.dag_longest_path_length(directed_graph)
+      layout_height = max(
+        0.90,
+        longest_path * rank_spacing)
+
+      layout = get_sugiyama_layout(
+        layout_edges,
+        origin=(0.05,0),
+        scale=(0.90,layout_height),
+        node_size=0.025,
+        total_iterations=50)
+      layout = {
+        node: (position[0],position[1] + margin)
+        for node,position in layout.items()
+      }
+      graph_scale = (1.0,layout_height + 2 * margin)
+      edge_layout = "straight"
+      edge_layout_kwargs = {
+        "selfloop_radius": 0.06,
+        "selfloop_angle": math.pi / 2
+      }
+    elif node_layout == "spring":
+      node_count = max(len(network),1)
+      layout_kwargs = {
+        "k": 1.5 * node_count ** -0.5,
+        "total_iterations": 300,
+        "node_size": 0.025
+      }
 
     plot_instance = EditableGraph(
             g,
-            node_size=2,
+            origin=graph_origin,
+            scale=graph_scale,
+            node_layout=layout,
+            node_layout_kwargs=layout_kwargs,
+            edge_layout=edge_layout,
+            edge_layout_kwargs=edge_layout_kwargs,
+            node_size=2.5,
             node_labels=True,
-            node_label_offset=0.1,
-            node_label_fontdict=font_properties,
+            node_label_offset=(0,0),
+            node_label_fontdict={"size": 7},
             edge_width=1,
             arrows=True,
             edge_labels=transitionLabels,
+            edge_label_position=0.55,
+            edge_label_rotate=False,
+            edge_label_fontdict={
+              "size": 7,
+              "bbox": {
+                "boxstyle": "round,pad=0.15",
+                "facecolor": "white",
+                "edgecolor": "none",
+                "alpha": 0.85
+              }
+            },
             ax=ax)
+
+    if view:
+      ax.set_xlim(view[0])
+      ax.set_ylim(view[1])
+
     canvas.draw()
 
 def compilemodel():
   global graph
   graph = pmcparser.extractGraphFromPrism(txt.get('1.0',tk.END))
-  updatePlot(graph['transitions'],graph['transitionLabels'])
+
+  if not graph["transitions"]:
+    distributeButton.config(state=tk.DISABLED)
+    return
+
+  updatePlot(graph["transitions"],graph["transitionLabels"])
+  distributeButton.config(state=tk.NORMAL)
+
+def distributeGraph():
+  if not graph or not graph["transitions"]:
+    return
+
+  updatePlot(
+    graph["transitions"],
+    graph["transitionLabels"],
+    node_layout="spring",
+    preserve_view=True)
 
 def createTemplate():
+  if not graph or not graph["transitions"]:
+    return
+
   pmcparser.createTemplate("obsTemplate.json",graph)
 
 def populateTemplate():
@@ -102,6 +194,9 @@ def populateTemplate():
 
 def loadlog():
   global g2
+
+  if not graph or not graph["transitions"]:
+    return
   file_path = filedialog.askopenfilename(title="Log File")
   logField.delete(0,tk.END)
   logField.insert(0,file_path)
@@ -204,40 +299,17 @@ modelfilename=""
 
 root = tk.Tk()
 root.title("Model Editor 0.2")
-icon_image = Image.open("approved-icon.png")
+icon_path = Path(__file__).resolve().with_name("approved-icon.png")
+icon_image = Image.open(icon_path)
+icon_image.thumbnail((256,256),Image.LANCZOS)
 icon_photo = ImageTk.PhotoImage(icon_image)
-root.icon_photo = icon_photo 
-root.wm_iconbitmap()
-root.iconphoto(False, root.icon_photo)
+root.iconphoto(True, icon_photo)
 
 
-graph = [
-    (0,1),
-    (0,2)]
+graph = None
 
 fig, ax = plt.subplots(figsize=(10, 10))
-
-node_labels = {
-  0 : 'zero',
-  1 : 'one',
-  2 : 'two'
-}
-
-edge_labels = {
-  (0,1) : 'edge01',
-  (0,2) : 'edge02'
-}
-
-plot_instance = EditableGraph(
-    graph,
-    node_size=2,
-    node_labels=node_labels,
-    edge_labels=edge_labels,
-    node_label_offset=0.1,
-    node_label_fontdict=dict(size=20),
-    edge_width=1,
-    arrows=True,
-    ax=ax)
+ax.set_axis_off()
 
 graphframe = tk.Frame(root, pady=10,padx=10)
 graphframe.pack(side=tk.RIGHT,fill=tk.BOTH)
@@ -263,6 +335,12 @@ upButton = tk.Button(zoomFrame, text = "Up", command=moveUp)
 upButton.pack(side=tk.RIGHT, padx=10)
 downButton = tk.Button(zoomFrame, text="Down", command=moveDown)
 downButton.pack(side=tk.RIGHT, padx=10)
+distributeButton = tk.Button(
+    zoomFrame,
+    text="Distribute",
+    command=distributeGraph,
+    state=tk.DISABLED)
+distributeButton.pack(side=tk.RIGHT, padx=10)
 
 
 frame = tk.Frame(root, pady=10, padx=10)
