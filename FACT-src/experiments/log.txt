@@ -1,7 +1,0 @@
-Transition counters > 0:
-transition[0].counter = 1959
-transition[3].counter = 1959
-transition[7].counter = 28746
-transition[8].counter = 29272
-transition[10].counter = 29272
-
